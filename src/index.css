@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --color-beige: #F5F0E8;
+  --color-beige-dark: #E8DFD0;
+  --color-yellow: #FFE566;
+  --color-yellow-dark: #F5D547;
+  --font-sans: "Space Grotesk", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-beige);
+  background-image: radial-gradient(circle, #C4B8A8 1px, transparent 1px);
+  background-size: 20px 20px;
+  color: #000;
+  min-height: 100dvh;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.neo-border {
+  border: 2px solid #000;
+}
+
+.neo-shadow {
+  box-shadow: 4px 4px 0 #000;
+}
+
+.neo-shadow-sm {
+  box-shadow: 2px 2px 0 #000;
+}
+
+.neo-btn {
+  border: 2px solid #000;
+  box-shadow: 3px 3px 0 #000;
+  font-weight: 600;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.neo-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #000;
+}
+
+.neo-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.neo-input {
+  border: 2px solid #000;
+  background: #fff;
+  font-family: inherit;
+}
+
+.neo-input:focus {
+  outline: none;
+  box-shadow: 3px 3px 0 #000;
+}
