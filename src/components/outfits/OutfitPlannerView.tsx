@@ -11,7 +11,6 @@ import { SortableOutfitGrid } from './SortableOutfitGrid'
 
 export function OutfitPlannerView() {
   const {
-    wardrobes,
     allItems,
     folders,
     outfitsByFolder,
@@ -32,18 +31,11 @@ export function OutfitPlannerView() {
   const [outfitName, setOutfitName] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filters, setFilters] = useState(defaultFilters)
-  const [wardrobeFilter, setWardrobeFilter] = useState<string>('all')
 
   const activeFolder = folders.find((f) => f.id === activeFolderId)
   const folderOutfits = activeFolderId ? (outfitsByFolder[activeFolderId] ?? []) : []
 
-  const builderItems = useMemo(() => {
-    let pool = allItems
-    if (wardrobeFilter !== 'all') {
-      pool = pool.filter((i) => i.wardrobeId === wardrobeFilter)
-    }
-    return applyFilters(pool, filters)
-  }, [allItems, wardrobeFilter, filters])
+  const builderItems = useMemo(() => applyFilters(allItems, filters), [allItems, filters])
 
   function openBuilder(outfit?: Outfit) {
     if (outfit) {
@@ -205,30 +197,7 @@ export function OutfitPlannerView() {
             placeholder="e.g. Day 1 sightseeing"
           />
 
-          <div>
-            <p className="text-sm font-medium mb-2">Wardrobe</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setWardrobeFilter('all')}
-                className={`neo-btn px-3 py-1 text-xs ${wardrobeFilter === 'all' ? 'bg-yellow' : 'bg-white'}`}
-              >
-                Both
-              </button>
-              {wardrobes.map((w) => (
-                <button
-                  key={w.id}
-                  type="button"
-                  onClick={() => setWardrobeFilter(w.id)}
-                  className={`neo-btn px-3 py-1 text-xs ${wardrobeFilter === w.id ? 'bg-yellow' : 'bg-white'}`}
-                >
-                  {w.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <ItemFiltersBar items={builderItems} filters={filters} onChange={setFilters} />
+          <ItemFiltersBar items={allItems} filters={filters} onChange={setFilters} />
 
           <p className="text-sm font-semibold">
             Selected: {selectedIds.length} · Tap items to add/remove

@@ -61,7 +61,6 @@ export const SEASONS: { value: Season; label: string }[] = [
   { value: 'winter', label: 'Winter' },
 ]
 
-export const DEFAULT_WARDROBES: Wardrobe[] = [
-  { id: 'wardrobe-1', name: 'Me' },
-  { id: 'wardrobe-2', name: 'Partner' },
-]
+export const DEFAULT_WARDROBE_ID = 'wardrobe-1'
+
+export const DEFAULT_WARDROBES: Wardrobe[] = [{ id: DEFAULT_WARDROBE_ID, name: 'Closet' }]

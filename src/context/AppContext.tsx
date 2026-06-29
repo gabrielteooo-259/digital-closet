@@ -7,7 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { ClothingItem, Outfit, OutfitFolder, Wardrobe, Category } from '../types'
+import type { ClothingItem, Outfit, OutfitFolder, Category } from '../types'
+import { DEFAULT_WARDROBE_ID } from '../types'
 import {
   deleteFolder,
   deleteItem,
@@ -24,24 +25,20 @@ import {
   saveItem,
   saveOutfit,
   savePhoto,
-  saveWardrobes,
 } from '../lib/storage'
 import { nextSortOrderForCategory, sortItemsForDisplay } from '../lib/itemOrder'
 import { optimizePhotoForStorage } from '../lib/imageUtils'
 
 interface AppContextValue {
   loading: boolean
-  wardrobes: Wardrobe[]
-  activeWardrobeId: string
-  setActiveWardrobeId: (id: string) => void
-  renameWardrobe: (id: string, name: string) => Promise<void>
+  wardrobeId: string
   items: ClothingItem[]
   allItems: ClothingItem[]
   refreshItems: () => Promise<void>
   addItem: (item: Omit<ClothingItem, 'id' | 'createdAt' | 'photoId' | 'sortOrder'>, photoBlob: Blob) => Promise<void>
   updateItem: (item: ClothingItem, photoBlob?: Blob) => Promise<void>
   removeItem: (id: string) => Promise<void>
-  reorderItems: (wardrobeId: string, category: Category, orderedIds: string[]) => Promise<void>
+  reorderItems: (category: Category, orderedIds: string[]) => Promise<void>
   folders: OutfitFolder[]
   refreshFolders: () => Promise<void>
   addFolder: (name: string) => Promise<void>
@@ -62,22 +59,18 @@ function generateId(prefix: string) {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
-  const [wardrobes, setWardrobes] = useState<Wardrobe[]>([])
-  const [activeWardrobeId, setActiveWardrobeId] = useState('')
+  const [wardrobeId, setWardrobeId] = useState('')
   const [items, setItems] = useState<ClothingItem[]>([])
   const [allItems, setAllItems] = useState<ClothingItem[]>([])
   const [folders, setFolders] = useState<OutfitFolder[]>([])
   const [outfitsByFolder, setOutfitsByFolder] = useState<Record<string, Outfit[]>>({})
 
   const refreshItems = useCallback(async () => {
-    if (!activeWardrobeId) return
-    const [wardrobeItems, everyItem] = await Promise.all([
-      getItems(activeWardrobeId),
-      getAllItems(),
-    ])
+    if (!wardrobeId) return
+    const [wardrobeItems, everyItem] = await Promise.all([getItems(wardrobeId), getAllItems()])
     setItems(wardrobeItems)
     setAllItems(everyItem)
-  }, [activeWardrobeId])
+  }, [wardrobeId])
 
   const refreshFolders = useCallback(async () => {
     const list = await getFolders()
@@ -98,31 +91,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function boot() {
-      const w = await initStorage()
-      setWardrobes(w)
-      setActiveWardrobeId(w[0]?.id ?? '')
+      await initStorage()
+      setWardrobeId(DEFAULT_WARDROBE_ID)
       setLoading(false)
     }
     boot()
   }, [])
 
   useEffect(() => {
-    if (!activeWardrobeId) return
+    if (!wardrobeId) return
     refreshItems()
-  }, [activeWardrobeId, refreshItems])
+  }, [wardrobeId, refreshItems])
 
   useEffect(() => {
     refreshFolders().then(refreshOutfits)
   }, [refreshFolders, refreshOutfits])
-
-  const renameWardrobe = useCallback(
-    async (id: string, name: string) => {
-      const updated = wardrobes.map((w) => (w.id === id ? { ...w, name } : w))
-      await saveWardrobes(updated)
-      setWardrobes(updated)
-    },
-    [wardrobes]
-  )
 
   const addItem = useCallback(
     async (item: Omit<ClothingItem, 'id' | 'createdAt' | 'photoId' | 'sortOrder'>, photoBlob: Blob) => {
@@ -172,24 +155,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const reorderItems = useCallback(
-    async (wardrobeId: string, category: Category, orderedIds: string[]) => {
+    async (category: Category, orderedIds: string[]) => {
       const sortOrderById = new Map(orderedIds.map((id, index) => [id, index]))
 
-      setItems((prev) => {
-        if (activeWardrobeId !== wardrobeId) return prev
-        return sortItemsForDisplay(
+      setItems((prev) =>
+        sortItemsForDisplay(
           prev.map((item) =>
             item.category === category && sortOrderById.has(item.id)
               ? { ...item, sortOrder: sortOrderById.get(item.id)! }
               : item
           )
         )
-      })
+      )
 
       setAllItems((prev) =>
         sortItemsForDisplay(
           prev.map((item) => {
-            if (item.wardrobeId !== wardrobeId || item.category !== category) return item
+            if (item.category !== category) return item
             const index = sortOrderById.get(item.id)
             return index === undefined ? item : { ...item, sortOrder: index }
           })
@@ -198,7 +180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       await persistItemOrder(wardrobeId, category, orderedIds)
     },
-    [activeWardrobeId]
+    [wardrobeId]
   )
 
   const addFolder = useCallback(
@@ -282,10 +264,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       loading,
-      wardrobes,
-      activeWardrobeId,
-      setActiveWardrobeId,
-      renameWardrobe,
+      wardrobeId,
       items,
       allItems,
       refreshItems,
@@ -306,9 +285,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       loading,
-      wardrobes,
-      activeWardrobeId,
-      renameWardrobe,
+      wardrobeId,
       items,
       allItems,
       refreshItems,

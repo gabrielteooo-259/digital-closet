@@ -9,70 +9,21 @@ import { ItemFiltersBar, applyFilters, CategoryToggle, defaultFilters, isFilters
 import { SortableClosetGrid } from './SortableClosetGrid'
 
 export function ClosetView() {
-  const {
-    wardrobes,
-    activeWardrobeId,
-    setActiveWardrobeId,
-    renameWardrobe,
-    items,
-    addItem,
-    updateItem,
-    removeItem,
-    reorderItems,
-  } = useApp()
+  const { wardrobeId, items, addItem, updateItem, removeItem, reorderItems } = useApp()
 
   const [filters, setFilters] = useState(defaultFilters)
   const [showFilters, setShowFilters] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<ClothingItem | null>(null)
   const [viewing, setViewing] = useState<ClothingItem | null>(null)
-  const [renaming, setRenaming] = useState(false)
-  const [wardrobeName, setWardrobeName] = useState('')
 
   const filtered = useMemo(() => applyFilters(items, filters), [items, filters])
   const canReorder =
     filters.category !== 'all' && !isFiltersActive(filters, { includeCategory: false })
   const activeCategory = filters.category !== 'all' ? (filters.category as Category) : null
-  const activeWardrobe = wardrobes.find((w) => w.id === activeWardrobeId)
-
-  function startRename() {
-    setWardrobeName(activeWardrobe?.name ?? '')
-    setRenaming(true)
-  }
-
-  async function saveRename() {
-    if (activeWardrobeId && wardrobeName.trim()) {
-      await renameWardrobe(activeWardrobeId, wardrobeName.trim())
-    }
-    setRenaming(false)
-  }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          {wardrobes.map((w) => (
-            <button
-              key={w.id}
-              type="button"
-              onClick={() => setActiveWardrobeId(w.id)}
-              className={`flex-1 neo-btn py-2 text-sm ${
-                w.id === activeWardrobeId ? 'bg-yellow' : 'bg-white'
-              }`}
-            >
-              {w.name}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={startRename}
-          className="text-xs font-medium underline text-left opacity-70"
-        >
-          Rename active wardrobe
-        </button>
-      </div>
-
       <div className="flex flex-col gap-2">
         <CategoryToggle filters={filters} onChange={setFilters} />
 
@@ -112,7 +63,7 @@ export function ClosetView() {
       {filtered.length === 0 ? (
         <div className="neo-border bg-white neo-shadow-sm p-8 text-center">
           <p className="font-semibold">No items yet</p>
-          <p className="text-sm opacity-70 mt-1">Add your first piece to this wardrobe.</p>
+          <p className="text-sm opacity-70 mt-1">Add your first piece to your closet.</p>
         </div>
       ) : canReorder && activeCategory ? (
         <>
@@ -120,9 +71,7 @@ export function ClosetView() {
           <SortableClosetGrid
             items={filtered}
             onOpenItem={setViewing}
-            onReorder={(orderedIds) =>
-              reorderItems(activeWardrobeId, activeCategory, orderedIds)
-            }
+            onReorder={(orderedIds) => reorderItems(activeCategory, orderedIds)}
           />
         </>
       ) : (
@@ -146,12 +95,12 @@ export function ClosetView() {
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add clothing item">
         <ItemForm
-          wardrobeId={activeWardrobeId}
+          wardrobeId={wardrobeId}
           defaultCategory={activeCategory ?? 'top'}
           onCancel={() => setShowAdd(false)}
           onSubmit={async (data, blob) => {
             if (!blob) return
-            await addItem({ ...data, wardrobeId: activeWardrobeId }, blob)
+            await addItem({ ...data, wardrobeId }, blob)
             setShowAdd(false)
           }}
         />
@@ -161,7 +110,7 @@ export function ClosetView() {
         {editing && (
           <ItemForm
             initial={editing}
-            wardrobeId={activeWardrobeId}
+            wardrobeId={wardrobeId}
             onCancel={() => setEditing(null)}
             onSubmit={async (data, blob) => {
               await updateItem({ ...editing, ...data }, blob)
@@ -200,25 +149,6 @@ export function ClosetView() {
             </div>
           </div>
         )}
-      </Modal>
-
-      <Modal open={renaming} onClose={() => setRenaming(false)} title="Rename wardrobe">
-        <div className="flex flex-col gap-4">
-          <input
-            value={wardrobeName}
-            onChange={(e) => setWardrobeName(e.target.value)}
-            className="neo-input px-3 py-2 text-sm"
-            placeholder="Wardrobe name"
-          />
-          <div className="flex gap-2">
-            <Button variant="ghost" className="flex-1" onClick={() => setRenaming(false)}>
-              Cancel
-            </Button>
-            <Button className="flex-1" onClick={saveRename}>
-              Save
-            </Button>
-          </div>
-        </div>
       </Modal>
     </div>
   )

@@ -55,7 +55,7 @@ function getDb() {
 export async function initStorage(): Promise<Wardrobe[]> {
   const db = await getDb()
   const existing = await db.get('meta', 'wardrobes')
-  if (!existing) {
+  if (!existing || (existing as { value: Wardrobe[] }).value.length !== 1) {
     await db.put('meta', { key: 'wardrobes', value: DEFAULT_WARDROBES })
     return DEFAULT_WARDROBES
   }
