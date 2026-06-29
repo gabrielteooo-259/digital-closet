@@ -1,111 +1,70 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { ClothingItem, Outfit, OutfitFolder, Wardrobe } from '../types'
-import { DEFAULT_WARDROBES } from '../types'
-import { normalizeItemColor } from './colorDetection'
-import { sortItemsForDisplay } from './itemOrder'
-import type { Category } from '../types'
+import type { Category, ClothingItem, Outfit, OutfitFolder, Wardrobe } from '../types'
+import * as cloud from './cloudStorage'
+import * as local from './localStorage'
+import { isSupabaseConfigured } from './supabase'
 
-interface DigitalClosetDB extends DBSchema {
-  photos: {
-    key: string
-    value: { id: string; blob: Blob }
-  }
-  items: {
-    key: string
-    value: ClothingItem
-    indexes: { 'by-wardrobe': string }
-  }
-  folders: {
-    key: string
-    value: OutfitFolder
-  }
-  outfits: {
-    key: string
-    value: Outfit
-    indexes: { 'by-folder': string }
-  }
-  meta: {
-    key: string
-    value: unknown
-  }
+let householdId: string | null = null
+
+export function isCloudMode() {
+  return isSupabaseConfigured && householdId !== null
 }
 
-const DB_NAME = 'digital-closet'
-const DB_VERSION = 1
+export function configureCloudStorage(id: string) {
+  householdId = id
+}
 
-let dbPromise: Promise<IDBPDatabase<DigitalClosetDB>> | null = null
+export function clearCloudStorage() {
+  householdId = null
+}
 
-function getDb() {
-  if (!dbPromise) {
-    dbPromise = openDB<DigitalClosetDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        db.createObjectStore('photos', { keyPath: 'id' })
-        const items = db.createObjectStore('items', { keyPath: 'id' })
-        items.createIndex('by-wardrobe', 'wardrobeId')
-        db.createObjectStore('folders', { keyPath: 'id' })
-        const outfits = db.createObjectStore('outfits', { keyPath: 'id' })
-        outfits.createIndex('by-folder', 'folderId')
-        db.createObjectStore('meta', { keyPath: 'key' })
-      },
-    })
-  }
-  return dbPromise
+function requireHousehold() {
+  if (!householdId) throw new Error('Cloud storage not configured')
+  return householdId
 }
 
 export async function initStorage(): Promise<Wardrobe[]> {
-  const db = await getDb()
-  const existing = await db.get('meta', 'wardrobes')
-  if (!existing) {
-    await db.put('meta', { key: 'wardrobes', value: DEFAULT_WARDROBES })
-    return DEFAULT_WARDROBES
-  }
-  return (existing as { key: string; value: Wardrobe[] }).value
+  if (isCloudMode()) return cloud.cloudInitStorage(requireHousehold())
+  return local.initStorage()
 }
 
 export async function saveWardrobes(wardrobes: Wardrobe[]): Promise<void> {
-  const db = await getDb()
-  await db.put('meta', { key: 'wardrobes', value: wardrobes })
+  if (isCloudMode()) return cloud.cloudSaveWardrobes(requireHousehold(), wardrobes)
+  return local.saveWardrobes(wardrobes)
 }
 
 export async function savePhoto(id: string, blob: Blob): Promise<void> {
-  const db = await getDb()
-  await db.put('photos', { id, blob })
+  if (isCloudMode()) return cloud.cloudSavePhoto(requireHousehold(), id, blob)
+  return local.savePhoto(id, blob)
 }
 
 export async function getPhoto(id: string): Promise<Blob | undefined> {
-  const db = await getDb()
-  const record = await db.get('photos', id)
-  return record?.blob
+  if (isCloudMode()) return cloud.cloudGetPhoto(requireHousehold(), id)
+  return local.getPhoto(id)
 }
 
 export async function deletePhoto(id: string): Promise<void> {
-  const db = await getDb()
-  await db.delete('photos', id)
+  if (isCloudMode()) return cloud.cloudDeletePhoto(requireHousehold(), id)
+  return local.deletePhoto(id)
 }
 
 export async function saveItem(item: ClothingItem): Promise<void> {
-  const db = await getDb()
-  await db.put('items', item)
-}
-
-function normalizeItem(raw: ClothingItem & { colors?: string[]; category?: string }): ClothingItem {
-  const { colors: _legacy, ...item } = raw
-  const legacyCategory = raw.category as string
-  const category: ClothingItem['category'] =
-    legacyCategory === 'accessories' ? 'cap' : (item.category as ClothingItem['category'])
-
-  return {
-    ...item,
-    category,
-    color: normalizeItemColor(raw as unknown as Record<string, unknown>),
-    sortOrder: raw.sortOrder ?? raw.createdAt,
-  }
+  if (isCloudMode()) return cloud.cloudSaveItem(requireHousehold(), item)
+  return local.saveItem(item)
 }
 
 export async function getItems(wardrobeId: string): Promise<ClothingItem[]> {
-  const db = await getDb()
-  const items = await db.getAllFromIndex('items', 'by-wardrobe', wardrobeId)
-  return sortItemsForDisplay(items.map(normalizeItem))
+  if (isCloudMode()) return cloud.cloudGetItems(requireHousehold(), wardrobeId)
+  return local.getItems(wardrobeId)
+}
+
+export async function getAllItems(): Promise<ClothingItem[]> {
+  if (isCloudMode()) return cloud.cloudGetAllItems(requireHousehold())
+  return local.getAllItems()
+}
+
+export async function deleteItem(id: string): Promise<void> {
+  if (isCloudMode()) return cloud.cloudDeleteItem(requireHousehold(), id)
+  return local.deleteItem(id)
 }
 
 export async function reorderItems(
@@ -113,90 +72,41 @@ export async function reorderItems(
   category: Category,
   orderedIds: string[]
 ): Promise<void> {
-  const items = await getItems(wardrobeId)
-  const byId = new Map(items.map((item) => [item.id, item]))
-  const db = await getDb()
-  const tx = db.transaction('items', 'readwrite')
-  await Promise.all(
-    orderedIds.map((id, index) => {
-      const item = byId.get(id)
-      if (!item || item.category !== category) return Promise.resolve()
-      return tx.objectStore('items').put({ ...item, sortOrder: index })
-    })
-  )
-  await tx.done
-}
-
-export async function getAllItems(): Promise<ClothingItem[]> {
-  const db = await getDb()
-  const items = await db.getAll('items')
-  return items.map(normalizeItem)
-}
-
-export async function deleteItem(id: string): Promise<void> {
-  const db = await getDb()
-  await db.delete('items', id)
+  if (isCloudMode()) return cloud.cloudReorderItems(requireHousehold(), wardrobeId, category, orderedIds)
+  return local.reorderItems(wardrobeId, category, orderedIds)
 }
 
 export async function getFolders(): Promise<OutfitFolder[]> {
-  const db = await getDb()
-  return db.getAll('folders')
+  if (isCloudMode()) return cloud.cloudGetFolders(requireHousehold())
+  return local.getFolders()
 }
 
 export async function saveFolder(folder: OutfitFolder): Promise<void> {
-  const db = await getDb()
-  await db.put('folders', folder)
+  if (isCloudMode()) return cloud.cloudSaveFolder(requireHousehold(), folder)
+  return local.saveFolder(folder)
 }
 
 export async function deleteFolder(id: string): Promise<void> {
-  const db = await getDb()
-  const outfits = await db.getAllFromIndex('outfits', 'by-folder', id)
-  const tx = db.transaction(['folders', 'outfits'], 'readwrite')
-  await Promise.all([
-    ...outfits.map((o) => tx.objectStore('outfits').delete(o.id)),
-    tx.objectStore('folders').delete(id),
-    tx.done,
-  ])
+  if (isCloudMode()) return cloud.cloudDeleteFolder(requireHousehold(), id)
+  return local.deleteFolder(id)
 }
 
 export async function getOutfits(folderId: string): Promise<Outfit[]> {
-  const db = await getDb()
-  const outfits = await db.getAllFromIndex('outfits', 'by-folder', folderId)
-  return outfits.map(normalizeOutfit).sort(compareOutfitOrder)
-}
-
-function normalizeOutfit(raw: Outfit & { sortOrder?: number }): Outfit {
-  return {
-    ...raw,
-    sortOrder: raw.sortOrder ?? raw.createdAt,
-  }
-}
-
-function compareOutfitOrder(a: Outfit, b: Outfit): number {
-  return a.sortOrder - b.sortOrder
-}
-
-export async function reorderOutfits(folderId: string, orderedIds: string[]): Promise<void> {
-  const db = await getDb()
-  const outfits = await getOutfits(folderId)
-  const byId = new Map(outfits.map((o) => [o.id, o]))
-  const tx = db.transaction('outfits', 'readwrite')
-  await Promise.all(
-    orderedIds.map((id, index) => {
-      const outfit = byId.get(id)
-      if (!outfit) return Promise.resolve()
-      return tx.objectStore('outfits').put({ ...outfit, sortOrder: index })
-    })
-  )
-  await tx.done
+  if (isCloudMode()) return cloud.cloudGetOutfits(requireHousehold(), folderId)
+  return local.getOutfits(folderId)
 }
 
 export async function saveOutfit(outfit: Outfit): Promise<void> {
-  const db = await getDb()
-  await db.put('outfits', outfit)
+  if (isCloudMode()) return cloud.cloudSaveOutfit(requireHousehold(), outfit)
+  return local.saveOutfit(outfit)
 }
 
 export async function deleteOutfit(id: string): Promise<void> {
-  const db = await getDb()
-  await db.delete('outfits', id)
+  if (isCloudMode()) return cloud.cloudDeleteOutfit(id)
+  return local.deleteOutfit(id)
+}
+
+export async function reorderOutfits(folderId: string, orderedIds: string[]): Promise<void> {
+  if (isCloudMode()) return cloud.cloudReorderOutfits(requireHousehold(), folderId, orderedIds)
+  return local.reorderOutfits(folderId, orderedIds)
 }
