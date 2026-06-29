@@ -5,6 +5,10 @@ import { supabase } from './supabase'
 const PHOTOS_BUCKET = 'photos'
 
 function photoPath(householdId: string, photoId: string) {
+  return `${householdId}/${photoId}.webp`
+}
+
+function legacyPhotoPath(householdId: string, photoId: string) {
   return `${householdId}/${photoId}.png`
 }
 
@@ -64,7 +68,7 @@ export async function cloudSavePhoto(
 ): Promise<void> {
   const { error } = await supabase!.storage
     .from(PHOTOS_BUCKET)
-    .upload(photoPath(householdId, id), blob, { upsert: true, contentType: 'image/png' })
+    .upload(photoPath(householdId, id), blob, { upsert: true, contentType: blob.type || 'image/webp' })
   if (error) throw error
 }
 
@@ -72,12 +76,17 @@ export async function cloudGetPhoto(householdId: string, id: string): Promise<Bl
   const { data, error } = await supabase!.storage
     .from(PHOTOS_BUCKET)
     .download(photoPath(householdId, id))
-  if (error || !data) return undefined
-  return data
+  if (!error && data) return data
+
+  const legacy = await supabase!.storage.from(PHOTOS_BUCKET).download(legacyPhotoPath(householdId, id))
+  if (legacy.error || !legacy.data) return undefined
+  return legacy.data
 }
 
 export async function cloudDeletePhoto(householdId: string, id: string): Promise<void> {
-  await supabase!.storage.from(PHOTOS_BUCKET).remove([photoPath(householdId, id)])
+  await supabase!.storage
+    .from(PHOTOS_BUCKET)
+    .remove([photoPath(householdId, id), legacyPhotoPath(householdId, id)])
 }
 
 export async function cloudSaveItem(householdId: string, item: ClothingItem): Promise<void> {
@@ -107,6 +116,7 @@ export async function cloudGetItems(
     .select('*')
     .eq('household_id', householdId)
     .eq('wardrobe_id', wardrobeId)
+    .range(0, 9999)
 
   if (error) throw error
   return sortItemsForDisplay((data ?? []).map(mapItem))
@@ -117,6 +127,7 @@ export async function cloudGetAllItems(householdId: string): Promise<ClothingIte
     .from('clothing_items')
     .select('*')
     .eq('household_id', householdId)
+    .range(0, 9999)
 
   if (error) throw error
   return sortItemsForDisplay((data ?? []).map(mapItem))

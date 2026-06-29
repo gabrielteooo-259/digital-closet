@@ -27,6 +27,7 @@ import {
   saveWardrobes,
 } from '../lib/storage'
 import { nextSortOrderForCategory, sortItemsForDisplay } from '../lib/itemOrder'
+import { optimizePhotoForStorage } from '../lib/imageUtils'
 
 interface AppContextValue {
   loading: boolean
@@ -135,8 +136,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sortOrder,
         createdAt: Date.now(),
       }
-      await savePhoto(photoId, photoBlob)
-      await saveItem(newItem)
+      const optimizedPhoto = await optimizePhotoForStorage(photoBlob)
+      await savePhoto(photoId, optimizedPhoto)
+      try {
+        await saveItem(newItem)
+      } catch (err) {
+        await deletePhoto(photoId).catch(() => {})
+        throw err
+      }
       await refreshItems()
     },
     [refreshItems]
@@ -145,7 +152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateItem = useCallback(
     async (item: ClothingItem, photoBlob?: Blob) => {
       if (photoBlob) {
-        await savePhoto(item.photoId, photoBlob)
+        await savePhoto(item.photoId, await optimizePhotoForStorage(photoBlob))
       }
       await saveItem(item)
       await refreshItems()

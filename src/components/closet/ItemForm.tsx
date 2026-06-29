@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { removeImageBackground } from '../../lib/backgroundRemoval'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { preparePhotoForUpload } from '../../lib/backgroundRemoval'
+import { formatUploadError } from '../../lib/imageUtils'
 import { getPhoto } from '../../lib/storage'
 import type { Category, ClothingItem, Season } from '../../types'
 import { CATEGORIES, SEASONS } from '../../types'
@@ -17,8 +18,11 @@ interface ItemFormProps {
   onCancel: () => void
 }
 
+const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif'
+
 export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCancel }: ItemFormProps) {
   const isEditing = !!initial
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(initial?.name ?? '')
   const [category, setCategory] = useState<Category>(
     initial?.category ?? defaultCategory ?? 'top'
@@ -29,6 +33,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
   const [processing, setProcessing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     if (!defaultCategory || isEditing) return
@@ -54,21 +59,32 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
     }
   }, [preview])
 
+  function openPhotoPicker() {
+    fileInputRef.current?.click()
+  }
+
+  function setPhotoPreview(blob: Blob) {
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(URL.createObjectURL(blob))
+    setPhotoBlob(blob)
+  }
+
   async function handleFile(file: File) {
     setError('')
+    setNotice('')
     setProcessing(true)
     try {
-      const noBg = await removeImageBackground(file)
-      if (preview) URL.revokeObjectURL(preview)
-      setPreview(URL.createObjectURL(noBg))
-      setPhotoBlob(noBg)
+      const { blob, skippedBackground } = await preparePhotoForUpload(file)
+      setPhotoPreview(blob)
+      if (skippedBackground) {
+        setNotice('Background removal skipped — photo is ready to save.')
+      }
     } catch {
-      setError('Could not process image. Using original photo.')
-      if (preview) URL.revokeObjectURL(preview)
-      setPreview(URL.createObjectURL(file))
-      setPhotoBlob(file)
+      setPhotoPreview(file)
+      setNotice('Using original photo.')
     } finally {
       setProcessing(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -90,16 +106,23 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!initial && !photoBlob) {
-      setError('Please upload a photo.')
+      setError('Please add a photo first.')
+      return
+    }
+    if (!wardrobeId) {
+      setError('Wardrobe not loaded. Refresh the page and try again.')
       return
     }
     setSaving(true)
+    setError('')
     try {
       if (initial && !photoBlob) {
         await onSubmit(buildPayload())
       } else {
         await onSubmit(buildPayload(), photoBlob!)
       }
+    } catch (err) {
+      setError(formatUploadError(err))
     } finally {
       setSaving(false)
     }
@@ -109,42 +132,42 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={PHOTO_ACCEPT}
+        className="sr-only"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) handleFile(f)
+        }}
+      />
+
       <div className="neo-border bg-white p-3">
         {preview ? (
           <img src={preview} alt="Preview" className="w-full max-h-48 object-contain mx-auto" />
         ) : (
-          <label className="flex flex-col items-center justify-center gap-2 py-8 cursor-pointer">
+          <button
+            type="button"
+            onClick={openPhotoPicker}
+            className="flex flex-col items-center justify-center gap-2 py-8 w-full cursor-pointer"
+          >
             <span className="text-4xl">📷</span>
-            <span className="font-semibold text-sm">Tap to upload photo</span>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) handleFile(f)
-              }}
-            />
-          </label>
+            <span className="font-semibold text-sm">Tap to add photo</span>
+            <span className="text-xs opacity-60">Camera or photo library</span>
+          </button>
         )}
         {processing && (
-          <p className="text-center text-sm font-medium mt-2 animate-pulse">Removing background…</p>
+          <p className="text-center text-sm font-medium mt-2 animate-pulse">Processing photo…</p>
         )}
         {preview && !processing && (
-          <label className="block text-center mt-2 text-sm font-medium underline cursor-pointer">
+          <button
+            type="button"
+            onClick={openPhotoPicker}
+            className="block w-full text-center mt-2 text-sm font-medium underline"
+          >
             Change photo
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) handleFile(f)
-              }}
-            />
-          </label>
+          </button>
         )}
       </div>
 
@@ -155,6 +178,9 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
           <span className="font-medium">Category:</span>{' '}
           <span className="bg-yellow neo-border px-2 py-0.5 text-xs font-semibold inline-block">
             {categoryLabel}
+          </span>
+          <span className="block text-xs opacity-60 mt-1">
+            Switch the category tab above before adding if you want a different one.
           </span>
         </p>
       ) : (
@@ -195,6 +221,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
         </div>
       </fieldset>
 
+      {notice && <p className="text-sm text-black/70 font-medium">{notice}</p>}
       {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
 
       <div className="flex gap-2 pt-2">
@@ -206,7 +233,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
           disabled={saving || processing || (!initial && !photoBlob)}
           className="flex-1"
         >
-          {saving ? 'Saving…' : initial ? 'Update' : 'Add item'}
+          {saving ? 'Saving…' : processing ? 'Processing…' : initial ? 'Update' : 'Add item'}
         </Button>
       </div>
       <input type="hidden" value={wardrobeId} readOnly />
