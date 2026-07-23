@@ -49,6 +49,7 @@ interface AppContextValue {
   updateOutfit: (outfit: Outfit) => Promise<void>
   removeOutfit: (id: string, folderId: string) => Promise<void>
   reorderOutfits: (folderId: string, orderedIds: string[]) => Promise<void>
+  reloadAll: () => Promise<void>
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -261,6 +262,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await persistOutfitOrder(folderId, orderedIds)
   }, [])
 
+  const reloadAll = useCallback(async () => {
+    await refreshItems()
+    await refreshFolders()
+    await refreshOutfits()
+  }, [refreshItems, refreshFolders, refreshOutfits])
+
   const value = useMemo(
     () => ({
       loading,
@@ -282,6 +289,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateOutfit,
       removeOutfit,
       reorderOutfits,
+      reloadAll,
     }),
     [
       loading,
@@ -303,6 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateOutfit,
       removeOutfit,
       reorderOutfits,
+      reloadAll,
     ]
   )
 

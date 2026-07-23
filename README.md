@@ -1,32 +1,31 @@
-# React + TypeScript + Vite
+# Digital Closet
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A mobile-first wardrobe app built with React, TypeScript, and Vite. Add clothing photos, organize by category, and plan outfits for trips and events.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Closet with Top / Bottom / Cap / Shoes categories
+- Background removal on photo upload
+- Outfit planner with folders
+- **Local storage** — data stays on your device (IndexedDB)
+- **Export / Import** — backup your closet as a JSON file
 
-## React Compiler
+## Deploy on Vercel
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. Push this repo to GitHub
+2. Import the project in [Vercel](https://vercel.com)
+3. No environment variables required
+4. Deploy
 
-## Expanding the Oxlint configuration
+## Local development
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Backup
+
+Use **Export** in the app header to download a backup file. Use **Import** to restore it (replaces current data on that device).
+
+Data is stored in your browser. Clearing site data will remove your closet unless you have an export.

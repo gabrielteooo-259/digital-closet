@@ -64,20 +64,14 @@ export function formatUploadError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err)
   const lower = message.toLowerCase()
 
-  if (lower.includes('row-level security') || lower.includes('policy')) {
-    return 'Upload blocked by permissions. Sign out and back in, or check Supabase storage policies.'
-  }
-  if (lower.includes('storage') && (lower.includes('quota') || lower.includes('limit'))) {
-    return 'Storage is full. Delete some items or upgrade your Supabase storage plan.'
+  if (lower.includes('quota') || lower.includes('quotaexceedederror')) {
+    return 'This device is out of storage space. Delete some items or export a backup.'
   }
   if (lower.includes('payload too large') || lower.includes('entity too large')) {
     return 'Photo is too large. Try a smaller image or retake the photo.'
   }
   if (lower.includes('failed to fetch') || lower.includes('network')) {
-    return 'Upload failed — check your connection and try again.'
-  }
-  if (lower.includes('cloud storage not configured')) {
-    return 'Cloud sync is not ready. Sign out, sign back in, and try again.'
+    return 'Save failed — check your connection and try again.'
   }
 
   return message || 'Could not save item. Please try again.'

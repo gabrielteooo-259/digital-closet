@@ -200,3 +200,112 @@ export async function deleteOutfit(id: string): Promise<void> {
   const db = await getDb()
   await db.delete('outfits', id)
 }
+
+export type ClosetBackup = {
+  version: 1
+  exportedAt: number
+  wardrobes: Wardrobe[]
+  items: ClothingItem[]
+  folders: OutfitFolder[]
+  outfits: Outfit[]
+  photos: { id: string; mimeType: string; data: string }[]
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64 = result.split(',')[1]
+      if (!base64) {
+        reject(new Error('Could not read photo data'))
+        return
+      }
+      resolve(base64)
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read photo data'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: mimeType })
+}
+
+export async function exportBackup(): Promise<ClosetBackup> {
+  const db = await getDb()
+  const wardrobes = await initStorage()
+  const items = await getAllItems()
+  const folders = await getFolders()
+  const outfits = (await db.getAll('outfits')).map(normalizeOutfit)
+  const photoRecords = await db.getAll('photos')
+  const photos = await Promise.all(
+    photoRecords.map(async (record) => ({
+      id: record.id,
+      mimeType: record.blob.type || 'image/webp',
+      data: await blobToBase64(record.blob),
+    }))
+  )
+
+  return {
+    version: 1,
+    exportedAt: Date.now(),
+    wardrobes,
+    items,
+    folders,
+    outfits,
+    photos,
+  }
+}
+
+export async function importBackup(backup: ClosetBackup): Promise<void> {
+  if (backup.version !== 1) throw new Error('Unsupported backup file version')
+
+  const db = await getDb()
+  const tx = db.transaction(['photos', 'items', 'folders', 'outfits', 'meta'], 'readwrite')
+  await Promise.all([
+    tx.objectStore('photos').clear(),
+    tx.objectStore('items').clear(),
+    tx.objectStore('folders').clear(),
+    tx.objectStore('outfits').clear(),
+    tx.objectStore('meta').clear(),
+  ])
+  await tx.done
+
+  await saveWardrobes(backup.wardrobes.length > 0 ? backup.wardrobes : DEFAULT_WARDROBES)
+
+  for (const photo of backup.photos) {
+    await savePhoto(photo.id, base64ToBlob(photo.data, photo.mimeType))
+  }
+  for (const item of backup.items) {
+    await saveItem(normalizeItem(item))
+  }
+  for (const folder of backup.folders) {
+    await saveFolder(folder)
+  }
+  for (const outfit of backup.outfits) {
+    await saveOutfit(normalizeOutfit(outfit))
+  }
+}
+
+export function downloadBackupFile(backup: ClosetBackup): void {
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `digital-closet-backup-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.json`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function parseBackupFile(file: File): Promise<ClosetBackup> {
+  const text = await file.text()
+  const parsed = JSON.parse(text) as ClosetBackup
+  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.items) || !Array.isArray(parsed.photos)) {
+    throw new Error('Invalid backup file')
+  }
+  return parsed
+}
