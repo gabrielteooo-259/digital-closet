@@ -127,8 +127,6 @@ export function ClosetView() {
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <dt className="font-semibold">Category</dt>
               <dd className="capitalize">{viewing.category}</dd>
-              <dt className="font-semibold">Season</dt>
-              <dd>{viewing.season.join(', ') || '—'}</dd>
             </dl>
             <div className="flex gap-2">
               <Button variant="secondary" className="flex-1" onClick={() => { setEditing(viewing); setViewing(null) }}>

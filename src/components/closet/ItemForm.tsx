@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { preparePhotoForUpload } from '../../lib/backgroundRemoval'
 import { formatUploadError } from '../../lib/imageUtils'
 import { getPhoto } from '../../lib/storage'
-import type { Category, ClothingItem, Season } from '../../types'
-import { CATEGORIES, SEASONS } from '../../types'
+import type { Category, ClothingItem } from '../../types'
+import { CATEGORIES } from '../../types'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 
@@ -27,7 +27,6 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
   const [category, setCategory] = useState<Category>(
     initial?.category ?? defaultCategory ?? 'top'
   )
-  const [season, setSeason] = useState<Season[]>(initial?.season ?? [])
   const [preview, setPreview] = useState<string | null>(null)
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -88,16 +87,12 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
     }
   }
 
-  function toggleSeason(s: Season) {
-    setSeason((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
-  }
-
   function buildPayload() {
     return {
       name: name.trim(),
       brand: initial?.brand ?? '',
       category,
-      season,
+      season: initial?.season ?? [],
       tags: initial?.tags ?? [],
       color: initial?.color ?? null,
     }
@@ -202,24 +197,6 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
           </div>
         </fieldset>
       )}
-
-      <fieldset>
-        <legend className="text-sm font-medium mb-2">Season</legend>
-        <div className="flex flex-wrap gap-2">
-          {SEASONS.map((s) => (
-            <button
-              key={s.value}
-              type="button"
-              onClick={() => toggleSeason(s.value)}
-              className={`neo-btn px-3 py-1.5 text-sm ${
-                season.includes(s.value) ? 'bg-yellow' : 'bg-white'
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
 
       {notice && <p className="text-sm text-black/70 font-medium">{notice}</p>}
       {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
