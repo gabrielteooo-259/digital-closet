@@ -77,7 +77,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
     setPhotoBlob(null)
     if (preview) URL.revokeObjectURL(preview)
     setPreview(null)
-    setNotice('Drag and resize to fit the outline.')
+    setNotice('Drag and resize to fit the square.')
   }
 
   function finishProcessedPhoto(blob: Blob) {

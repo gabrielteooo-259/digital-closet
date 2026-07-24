@@ -120,7 +120,7 @@ export function PhotoAlignEditor({ imageBlob, category, onConfirm, onRetake }: P
     <div className="flex flex-col gap-3">
       <div className="neo-border bg-white p-2">
         <p className="text-xs font-medium mb-2 text-center">
-          Fit your {guide.label.toLowerCase()} inside the red outline
+          Fit your {guide.label.toLowerCase()} inside the red square
         </p>
         <div className="relative mx-auto w-full max-w-[320px] aspect-square bg-[#f3f3f3] neo-border">
           <canvas
