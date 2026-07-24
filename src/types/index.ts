@@ -20,15 +20,8 @@ export interface ClothingItem {
   createdAt: number
 }
 
-export interface OutfitFolder {
-  id: string
-  name: string
-  createdAt: number
-}
-
 export interface Outfit {
   id: string
-  folderId: string
   name: string
   itemIds: string[]
   sortOrder: number

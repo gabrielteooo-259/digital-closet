@@ -7,21 +7,18 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { ClothingItem, Outfit, OutfitFolder, Category } from '../types'
+import type { ClothingItem, Outfit, Category } from '../types'
 import { DEFAULT_WARDROBE_ID } from '../types'
 import {
-  deleteFolder,
   deleteItem,
   deleteOutfit,
   deletePhoto,
   getAllItems,
-  getFolders,
+  getAllOutfits,
   getItems,
-  getOutfits,
   initStorage,
   reorderItems as persistItemOrder,
   reorderOutfits as persistOutfitOrder,
-  saveFolder,
   saveItem,
   saveOutfit,
   savePhoto,
@@ -39,16 +36,12 @@ interface AppContextValue {
   updateItem: (item: ClothingItem, photoBlob?: Blob) => Promise<void>
   removeItem: (id: string) => Promise<void>
   reorderItems: (category: Category, orderedIds: string[]) => Promise<void>
-  folders: OutfitFolder[]
-  refreshFolders: () => Promise<void>
-  addFolder: (name: string) => Promise<void>
-  removeFolder: (id: string) => Promise<void>
-  outfitsByFolder: Record<string, Outfit[]>
+  outfits: Outfit[]
   refreshOutfits: () => Promise<void>
-  addOutfit: (folderId: string, name: string, itemIds: string[]) => Promise<void>
+  addOutfit: (name: string, itemIds: string[]) => Promise<void>
   updateOutfit: (outfit: Outfit) => Promise<void>
-  removeOutfit: (id: string, folderId: string) => Promise<void>
-  reorderOutfits: (folderId: string, orderedIds: string[]) => Promise<void>
+  removeOutfit: (id: string) => Promise<void>
+  reorderOutfits: (orderedIds: string[]) => Promise<void>
   reloadAll: () => Promise<void>
 }
 
@@ -63,8 +56,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [wardrobeId, setWardrobeId] = useState('')
   const [items, setItems] = useState<ClothingItem[]>([])
   const [allItems, setAllItems] = useState<ClothingItem[]>([])
-  const [folders, setFolders] = useState<OutfitFolder[]>([])
-  const [outfitsByFolder, setOutfitsByFolder] = useState<Record<string, Outfit[]>>({})
+  const [outfits, setOutfits] = useState<Outfit[]>([])
 
   const refreshItems = useCallback(async () => {
     if (!wardrobeId) return
@@ -73,21 +65,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAllItems(everyItem)
   }, [wardrobeId])
 
-  const refreshFolders = useCallback(async () => {
-    const list = await getFolders()
-    setFolders(list.sort((a, b) => b.createdAt - a.createdAt))
-  }, [])
-
   const refreshOutfits = useCallback(async () => {
-    const list = await getFolders()
-    const grouped: Record<string, Outfit[]> = {}
-    await Promise.all(
-      list.map(async (folder) => {
-        const outfits = await getOutfits(folder.id)
-        grouped[folder.id] = outfits
-      })
-    )
-    setOutfitsByFolder(grouped)
+    setOutfits(await getAllOutfits())
   }, [])
 
   useEffect(() => {
@@ -105,8 +84,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [wardrobeId, refreshItems])
 
   useEffect(() => {
-    refreshFolders().then(refreshOutfits)
-  }, [refreshFolders, refreshOutfits])
+    refreshOutfits()
+  }, [refreshOutfits])
 
   const addItem = useCallback(
     async (item: Omit<ClothingItem, 'id' | 'createdAt' | 'photoId' | 'sortOrder'>, photoBlob: Blob) => {
@@ -184,37 +163,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [wardrobeId]
   )
 
-  const addFolder = useCallback(
-    async (name: string) => {
-      const folder: OutfitFolder = {
-        id: generateId('folder'),
-        name,
-        createdAt: Date.now(),
-      }
-      await saveFolder(folder)
-      await refreshFolders()
-      await refreshOutfits()
-    },
-    [refreshFolders, refreshOutfits]
-  )
-
-  const removeFolder = useCallback(
-    async (id: string) => {
-      await deleteFolder(id)
-      await refreshFolders()
-      await refreshOutfits()
-    },
-    [refreshFolders, refreshOutfits]
-  )
-
   const addOutfit = useCallback(
-    async (folderId: string, name: string, itemIds: string[]) => {
-      const existing = await getOutfits(folderId)
+    async (name: string, itemIds: string[]) => {
+      const existing = await getAllOutfits()
       const sortOrder =
         existing.length === 0 ? 0 : Math.max(...existing.map((o) => o.sortOrder)) + 1
       const outfit: Outfit = {
         id: generateId('outfit'),
-        folderId,
         name,
         itemIds,
         sortOrder,
@@ -235,38 +190,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const removeOutfit = useCallback(
-    async (id: string, folderId: string) => {
+    async (id: string) => {
       await deleteOutfit(id)
-      setOutfitsByFolder((prev) => ({
-        ...prev,
-        [folderId]: (prev[folderId] ?? []).filter((o) => o.id !== id),
-      }))
+      setOutfits((prev) => prev.filter((o) => o.id !== id))
     },
     []
   )
 
-  const reorderOutfits = useCallback(async (folderId: string, orderedIds: string[]) => {
-    setOutfitsByFolder((prev) => {
-      const current = prev[folderId] ?? []
-      const byId = new Map(current.map((o) => [o.id, o]))
-      return {
-        ...prev,
-        [folderId]: orderedIds
-          .map((id, index) => {
-            const outfit = byId.get(id)
-            return outfit ? { ...outfit, sortOrder: index } : null
-          })
-          .filter((o): o is Outfit => !!o),
-      }
+  const reorderOutfits = useCallback(async (orderedIds: string[]) => {
+    setOutfits((prev) => {
+      const byId = new Map(prev.map((o) => [o.id, o]))
+      return orderedIds
+        .map((id, index) => {
+          const outfit = byId.get(id)
+          return outfit ? { ...outfit, sortOrder: index } : null
+        })
+        .filter((o): o is Outfit => !!o)
     })
-    await persistOutfitOrder(folderId, orderedIds)
+    await persistOutfitOrder(orderedIds)
   }, [])
 
   const reloadAll = useCallback(async () => {
     await refreshItems()
-    await refreshFolders()
     await refreshOutfits()
-  }, [refreshItems, refreshFolders, refreshOutfits])
+  }, [refreshItems, refreshOutfits])
 
   const value = useMemo(
     () => ({
@@ -279,11 +226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateItem,
       removeItem,
       reorderItems,
-      folders,
-      refreshFolders,
-      addFolder,
-      removeFolder,
-      outfitsByFolder,
+      outfits,
       refreshOutfits,
       addOutfit,
       updateOutfit,
@@ -301,11 +244,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateItem,
       removeItem,
       reorderItems,
-      folders,
-      refreshFolders,
-      addFolder,
-      removeFolder,
-      outfitsByFolder,
+      outfits,
       refreshOutfits,
       addOutfit,
       updateOutfit,

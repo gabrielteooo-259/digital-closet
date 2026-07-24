@@ -16,12 +16,18 @@ export function ItemCard({ item, onClick, selected, compact, isDragging }: ItemC
     <button
       type="button"
       onClick={onClick}
-      className={`text-left w-full bg-transparent transition-transform ${
+      className={`relative text-left w-full bg-transparent transition-transform ${
         isDragging ? 'shadow-lg' : 'active:scale-[0.98]'
-      } ${selected ? 'ring-4 ring-yellow ring-offset-2 ring-offset-beige' : ''} ${
-        onClick ? 'cursor-pointer' : ''
-      }`}
+      } ${onClick ? 'cursor-pointer' : ''}`}
     >
+      {selected && (
+        <span
+          className="absolute top-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-yellow neo-border text-[11px] font-bold leading-none"
+          aria-hidden
+        >
+          ✓
+        </span>
+      )}
       <div
         className={`${compact ? 'aspect-[10/7]' : 'aspect-[3/2.8]'} overflow-hidden flex items-center justify-center`}
       >

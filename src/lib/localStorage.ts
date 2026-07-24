@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { ClothingItem, Outfit, OutfitFolder, Wardrobe } from '../types'
+import type { ClothingItem, Outfit, Wardrobe } from '../types'
 import { DEFAULT_WARDROBES } from '../types'
 import { normalizeItemColor } from './colorDetection'
 import { sortItemsForDisplay } from './itemOrder'
@@ -17,11 +17,11 @@ interface DigitalClosetDB extends DBSchema {
   }
   folders: {
     key: string
-    value: OutfitFolder
+    value: { id: string; name: string; createdAt: number }
   }
   outfits: {
     key: string
-    value: Outfit
+    value: StoredOutfit
     indexes: { 'by-folder': string }
   }
   meta: {
@@ -32,6 +32,9 @@ interface DigitalClosetDB extends DBSchema {
 
 const DB_NAME = 'digital-closet'
 const DB_VERSION = 1
+const OUTFIT_SCOPE_ID = 'outfits'
+
+type StoredOutfit = Outfit & { folderId: string }
 
 let dbPromise: Promise<IDBPDatabase<DigitalClosetDB>> | null = null
 
@@ -57,9 +60,11 @@ export async function initStorage(): Promise<Wardrobe[]> {
   const existing = await db.get('meta', 'wardrobes')
   if (!existing || (existing as { value: Wardrobe[] }).value.length !== 1) {
     await db.put('meta', { key: 'wardrobes', value: DEFAULT_WARDROBES })
-    return DEFAULT_WARDROBES
   }
-  return (existing as { key: string; value: Wardrobe[] }).value
+  await migrateOutfitsToFlatList()
+  return existing && (existing as { value: Wardrobe[] }).value.length === 1
+    ? (existing as { key: string; value: Wardrobe[] }).value
+    : DEFAULT_WARDROBES
 }
 
 export async function saveWardrobes(wardrobes: Wardrobe[]): Promise<void> {
@@ -138,36 +143,37 @@ export async function deleteItem(id: string): Promise<void> {
   await db.delete('items', id)
 }
 
-export async function getFolders(): Promise<OutfitFolder[]> {
+async function migrateOutfitsToFlatList(): Promise<void> {
   const db = await getDb()
-  return db.getAll('folders')
-}
+  const rawOutfits = await db.getAll('outfits')
+  const folders = await db.getAll('folders')
+  const needsMigration =
+    folders.length > 0 || rawOutfits.some((outfit) => outfit.folderId !== OUTFIT_SCOPE_ID)
 
-export async function saveFolder(folder: OutfitFolder): Promise<void> {
-  const db = await getDb()
-  await db.put('folders', folder)
-}
+  if (!needsMigration) return
 
-export async function deleteFolder(id: string): Promise<void> {
-  const db = await getDb()
-  const outfits = await db.getAllFromIndex('outfits', 'by-folder', id)
+  const sorted = rawOutfits
+    .map(normalizeOutfit)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
+
   const tx = db.transaction(['folders', 'outfits'], 'readwrite')
   await Promise.all([
-    ...outfits.map((o) => tx.objectStore('outfits').delete(o.id)),
-    tx.objectStore('folders').delete(id),
+    ...folders.map((folder) => tx.objectStore('folders').delete(folder.id)),
+    ...sorted.map((outfit, index) =>
+      tx.objectStore('outfits').put({
+        ...outfit,
+        folderId: OUTFIT_SCOPE_ID,
+        sortOrder: index,
+      })
+    ),
     tx.done,
   ])
 }
 
-export async function getOutfits(folderId: string): Promise<Outfit[]> {
-  const db = await getDb()
-  const outfits = await db.getAllFromIndex('outfits', 'by-folder', folderId)
-  return outfits.map(normalizeOutfit).sort(compareOutfitOrder)
-}
-
-function normalizeOutfit(raw: Outfit & { sortOrder?: number }): Outfit {
+function normalizeOutfit(raw: Outfit & { folderId?: string; sortOrder?: number }): Outfit {
+  const { folderId: _folderId, ...outfit } = raw
   return {
-    ...raw,
+    ...outfit,
     sortOrder: raw.sortOrder ?? raw.createdAt,
   }
 }
@@ -176,16 +182,26 @@ function compareOutfitOrder(a: Outfit, b: Outfit): number {
   return a.sortOrder - b.sortOrder
 }
 
-export async function reorderOutfits(folderId: string, orderedIds: string[]): Promise<void> {
+function withOutfitScope(outfit: Outfit): StoredOutfit {
+  return { ...outfit, folderId: OUTFIT_SCOPE_ID }
+}
+
+export async function getAllOutfits(): Promise<Outfit[]> {
   const db = await getDb()
-  const outfits = await getOutfits(folderId)
+  const outfits = await db.getAll('outfits')
+  return outfits.map(normalizeOutfit).sort(compareOutfitOrder)
+}
+
+export async function reorderOutfits(orderedIds: string[]): Promise<void> {
+  const outfits = await getAllOutfits()
   const byId = new Map(outfits.map((o) => [o.id, o]))
+  const db = await getDb()
   const tx = db.transaction('outfits', 'readwrite')
   await Promise.all(
     orderedIds.map((id, index) => {
       const outfit = byId.get(id)
       if (!outfit) return Promise.resolve()
-      return tx.objectStore('outfits').put({ ...outfit, sortOrder: index })
+      return tx.objectStore('outfits').put(withOutfitScope({ ...outfit, sortOrder: index }))
     })
   )
   await tx.done
@@ -193,7 +209,7 @@ export async function reorderOutfits(folderId: string, orderedIds: string[]): Pr
 
 export async function saveOutfit(outfit: Outfit): Promise<void> {
   const db = await getDb()
-  await db.put('outfits', outfit)
+  await db.put('outfits', withOutfitScope(outfit))
 }
 
 export async function deleteOutfit(id: string): Promise<void> {
@@ -206,9 +222,10 @@ export type ClosetBackup = {
   exportedAt: number
   wardrobes: Wardrobe[]
   items: ClothingItem[]
-  folders: OutfitFolder[]
   outfits: Outfit[]
   photos: { id: string; mimeType: string; data: string }[]
+  /** @deprecated Legacy field kept for older backup files. */
+  folders?: { id: string; name: string; createdAt: number }[]
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -239,8 +256,7 @@ export async function exportBackup(): Promise<ClosetBackup> {
   const db = await getDb()
   const wardrobes = await initStorage()
   const items = await getAllItems()
-  const folders = await getFolders()
-  const outfits = (await db.getAll('outfits')).map(normalizeOutfit)
+  const outfits = await getAllOutfits()
   const photoRecords = await db.getAll('photos')
   const photos = await Promise.all(
     photoRecords.map(async (record) => ({
@@ -255,7 +271,6 @@ export async function exportBackup(): Promise<ClosetBackup> {
     exportedAt: Date.now(),
     wardrobes,
     items,
-    folders,
     outfits,
     photos,
   }
@@ -283,12 +298,13 @@ export async function importBackup(backup: ClosetBackup): Promise<void> {
   for (const item of backup.items) {
     await saveItem(normalizeItem(item))
   }
-  for (const folder of backup.folders) {
-    await saveFolder(folder)
+  const importedOutfits = backup.outfits
+    .map(normalizeOutfit)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
+  for (const [index, outfit] of importedOutfits.entries()) {
+    await saveOutfit({ ...outfit, sortOrder: index })
   }
-  for (const outfit of backup.outfits) {
-    await saveOutfit(normalizeOutfit(outfit))
-  }
+  await migrateOutfitsToFlatList()
 }
 
 export function downloadBackupFile(backup: ClosetBackup): void {
