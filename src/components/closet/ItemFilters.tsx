@@ -1,5 +1,5 @@
 import type { ClothingItem, ItemFilters as Filters } from '../../types'
-import { CATEGORIES, SEASONS } from '../../types'
+import { CATEGORIES } from '../../types'
 import { ColorSwatch } from '../ui/ColorSwatch'
 
 interface ItemFiltersProps {
@@ -78,25 +78,12 @@ export function ItemFiltersBar({ items, filters, onChange, showCategory = true }
         <select
           value={filters.brand}
           onChange={(e) => update({ brand: e.target.value })}
-          className="neo-input px-2 py-2 text-sm"
+          className="neo-input px-2 py-2 text-sm col-span-2"
         >
           <option value="">All brands</option>
           {brands.map((b) => (
             <option key={b} value={b}>
               {b}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={filters.season}
-          onChange={(e) => update({ season: e.target.value as Filters['season'] })}
-          className="neo-input px-2 py-2 text-sm"
-        >
-          <option value="all">All seasons</option>
-          {SEASONS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
             </option>
           ))}
         </select>
@@ -146,7 +133,6 @@ export function applyFilters(items: ClothingItem[], filters: Filters): ClothingI
   return items.filter((item) => {
     if (filters.category !== 'all' && item.category !== filters.category) return false
     if (filters.brand && item.brand !== filters.brand) return false
-    if (filters.season !== 'all' && !item.season.includes(filters.season)) return false
     if (filters.color && item.color !== filters.color) return false
     if (filters.tag && !item.tags.includes(filters.tag)) return false
     if (filters.search) {
@@ -162,7 +148,6 @@ export const defaultFilters: Filters = {
   search: '',
   category: 'all',
   brand: '',
-  season: 'all',
   color: '',
   tag: '',
 }
@@ -175,7 +160,6 @@ export function isFiltersActive(
     filters.search !== '' ||
     (includeCategory && filters.category !== 'all') ||
     filters.brand !== '' ||
-    filters.season !== 'all' ||
     filters.color !== '' ||
     filters.tag !== ''
   )

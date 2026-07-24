@@ -23,9 +23,48 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
   })
 }
 
+/** Resize large photos before AI processing without stripping transparency. */
+export async function resizeImageForProcessing(blob: Blob, maxDimension = 1024): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob)
+    const longest = Math.max(bitmap.width, bitmap.height)
+    if (longest <= maxDimension) {
+      bitmap.close()
+      return blob
+    }
+
+    const scale = maxDimension / longest
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      bitmap.close()
+      return blob
+    }
+
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    bitmap.close()
+
+    const png = await canvasToBlob(canvas, 'image/png')
+    return png && png.size > 0 ? png : blob
+  } catch {
+    return blob
+  }
+}
+
 /** Resize and compress photos before storage to reduce quota use and mobile memory pressure. */
-export async function optimizePhotoForStorage(blob: Blob): Promise<Blob> {
-  if (blob.size < 200_000 && (blob.type === 'image/webp' || blob.type === 'image/jpeg')) {
+export async function optimizePhotoForStorage(
+  blob: Blob,
+  options?: { preserveTransparency?: boolean }
+): Promise<Blob> {
+  if (
+    !options?.preserveTransparency &&
+    blob.size < 200_000 &&
+    (blob.type === 'image/webp' || blob.type === 'image/jpeg')
+  ) {
     return blob
   }
 
@@ -47,6 +86,15 @@ export async function optimizePhotoForStorage(blob: Blob): Promise<Blob> {
 
     ctx.drawImage(bitmap, 0, 0, width, height)
     bitmap.close()
+
+    if (options?.preserveTransparency) {
+      const webp = await canvasToBlob(canvas, 'image/webp', WEBP_QUALITY)
+      if (webp && webp.size > 0) return webp
+
+      const png = await canvasToBlob(canvas, 'image/png')
+      if (png && png.size > 0) return png
+      return blob
+    }
 
     const webp = await canvasToBlob(canvas, 'image/webp', WEBP_QUALITY)
     if (webp && webp.size > 0) return webp

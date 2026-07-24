@@ -70,13 +70,13 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
 
   async function handleFile(file: File) {
     setError('')
-    setNotice('')
+    setNotice('Preparing photo…')
     setProcessing(true)
     try {
-      const { blob, skippedBackground } = await preparePhotoForUpload(file)
+      const { blob, skippedBackground } = await preparePhotoForUpload(file, setNotice)
       setPhotoPreview(blob)
-      if (skippedBackground) {
-        setNotice('Background removal skipped — photo is ready to save.')
+      if (!skippedBackground) {
+        setNotice('Background removed — ready to save.')
       }
     } catch {
       setPhotoPreview(file)
@@ -92,7 +92,6 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
       name: name.trim(),
       brand: initial?.brand ?? '',
       category,
-      season: initial?.season ?? [],
       tags: initial?.tags ?? [],
       color: initial?.color ?? null,
     }
@@ -153,7 +152,9 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
           </button>
         )}
         {processing && (
-          <p className="text-center text-sm font-medium mt-2 animate-pulse">Processing photo…</p>
+          <p className="text-center text-sm font-medium mt-2 animate-pulse">
+            {notice || 'Removing background…'}
+          </p>
         )}
         {preview && !processing && (
           <button
@@ -198,7 +199,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
         </fieldset>
       )}
 
-      {notice && <p className="text-sm text-black/70 font-medium">{notice}</p>}
+      {notice && !processing && <p className="text-sm text-black/70 font-medium">{notice}</p>}
       {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
 
       <div className="flex gap-2 pt-2">

@@ -2,8 +2,6 @@ export type Category = 'top' | 'bottom' | 'cap' | 'shoes'
 
 export const OUTFIT_CATEGORY_ORDER: Category[] = ['cap', 'top', 'bottom', 'shoes']
 
-export type Season = 'spring' | 'summer' | 'fall' | 'winter'
-
 export interface Wardrobe {
   id: string
   name: string
@@ -15,7 +13,6 @@ export interface ClothingItem {
   photoId: string
   name: string
   brand: string
-  season: Season[]
   tags: string[]
   color: string | null
   category: Category
@@ -42,7 +39,6 @@ export interface ItemFilters {
   search: string
   category: Category | 'all'
   brand: string
-  season: Season | 'all'
   color: string
   tag: string
 }
@@ -52,13 +48,6 @@ export const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'bottom', label: 'Bottom' },
   { value: 'cap', label: 'Cap' },
   { value: 'shoes', label: 'Shoes' },
-]
-
-export const SEASONS: { value: Season; label: string }[] = [
-  { value: 'spring', label: 'Spring' },
-  { value: 'summer', label: 'Summer' },
-  { value: 'fall', label: 'Fall' },
-  { value: 'winter', label: 'Winter' },
 ]
 
 export const DEFAULT_WARDROBE_ID = 'wardrobe-1'
