@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { preparePhotoForUpload } from '../../lib/backgroundRemoval'
 import { formatUploadError } from '../../lib/imageUtils'
+import { categoryUsesSilhouetteAlign } from '../../lib/silhouettes'
 import { getPhoto } from '../../lib/storage'
 import type { Category, ClothingItem } from '../../types'
 import { CATEGORIES } from '../../types'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
+import { PhotoAlignEditor } from './PhotoAlignEditor'
 
 interface ItemFormProps {
   initial?: ClothingItem
@@ -29,6 +31,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
   )
   const [preview, setPreview] = useState<string | null>(null)
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
+  const [alignSource, setAlignSource] = useState<Blob | null>(null)
   const [processing, setProcessing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -66,6 +69,24 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
     if (preview) URL.revokeObjectURL(preview)
     setPreview(URL.createObjectURL(blob))
     setPhotoBlob(blob)
+    setAlignSource(null)
+  }
+
+  function startAlignStep(blob: Blob) {
+    setAlignSource(blob)
+    setPhotoBlob(null)
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(null)
+    setNotice('Drag and resize to fit the outline.')
+  }
+
+  function finishProcessedPhoto(blob: Blob) {
+    if (categoryUsesSilhouetteAlign(category)) {
+      startAlignStep(blob)
+      return
+    }
+    setPhotoPreview(blob)
+    setNotice('Photo ready to save.')
   }
 
   async function handleFile(file: File) {
@@ -74,12 +95,12 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
     setProcessing(true)
     try {
       const { blob, skippedBackground } = await preparePhotoForUpload(file, setNotice)
-      setPhotoPreview(blob)
-      if (!skippedBackground) {
+      finishProcessedPhoto(blob)
+      if (!skippedBackground && !categoryUsesSilhouetteAlign(category)) {
         setNotice('Background removed — ready to save.')
       }
     } catch {
-      setPhotoPreview(file)
+      finishProcessedPhoto(file)
       setNotice('Using original photo.')
     } finally {
       setProcessing(false)
@@ -99,6 +120,10 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (alignSource) {
+      setError('Finish aligning your photo first.')
+      return
+    }
     if (!initial && !photoBlob) {
       setError('Please add a photo first.')
       return
@@ -123,6 +148,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
   }
 
   const categoryLabel = CATEGORIES.find((c) => c.value === category)?.label ?? category
+  const needsAlign = Boolean(alignSource)
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -137,35 +163,51 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
         }}
       />
 
-      <div className="neo-border bg-white p-3">
-        {preview ? (
-          <img src={preview} alt="Preview" className="w-full max-h-48 object-contain mx-auto" />
-        ) : (
-          <button
-            type="button"
-            onClick={openPhotoPicker}
-            className="flex flex-col items-center justify-center gap-2 py-8 w-full cursor-pointer"
-          >
-            <span className="text-4xl">📷</span>
-            <span className="font-semibold text-sm">Tap to add photo</span>
-            <span className="text-xs opacity-60">Camera or photo library</span>
-          </button>
-        )}
-        {processing && (
-          <p className="text-center text-sm font-medium mt-2 animate-pulse">
-            {notice || 'Removing background…'}
-          </p>
-        )}
-        {preview && !processing && (
-          <button
-            type="button"
-            onClick={openPhotoPicker}
-            className="block w-full text-center mt-2 text-sm font-medium underline"
-          >
-            Change photo
-          </button>
-        )}
-      </div>
+      {needsAlign && alignSource ? (
+        <PhotoAlignEditor
+          imageBlob={alignSource}
+          category={category}
+          onConfirm={(blob) => {
+            setPhotoPreview(blob)
+            setNotice('Photo aligned — ready to save.')
+          }}
+          onRetake={() => {
+            setAlignSource(null)
+            setNotice('')
+            openPhotoPicker()
+          }}
+        />
+      ) : (
+        <div className="neo-border bg-white p-3">
+          {preview ? (
+            <img src={preview} alt="Preview" className="w-full max-h-48 object-contain mx-auto" />
+          ) : (
+            <button
+              type="button"
+              onClick={openPhotoPicker}
+              className="flex flex-col items-center justify-center gap-2 py-8 w-full cursor-pointer"
+            >
+              <span className="text-4xl">📷</span>
+              <span className="font-semibold text-sm">Tap to add photo</span>
+              <span className="text-xs opacity-60">Camera or photo library</span>
+            </button>
+          )}
+          {processing && (
+            <p className="text-center text-sm font-medium mt-2 animate-pulse">
+              {notice || 'Removing background…'}
+            </p>
+          )}
+          {preview && !processing && (
+            <button
+              type="button"
+              onClick={openPhotoPicker}
+              className="block w-full text-center mt-2 text-sm font-medium underline"
+            >
+              Change photo
+            </button>
+          )}
+        </div>
+      )}
 
       <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Blue linen shirt" />
 
@@ -199,7 +241,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
         </fieldset>
       )}
 
-      {notice && !processing && <p className="text-sm text-black/70 font-medium">{notice}</p>}
+      {notice && !processing && !needsAlign && <p className="text-sm text-black/70 font-medium">{notice}</p>}
       {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
 
       <div className="flex gap-2 pt-2">
@@ -208,7 +250,7 @@ export function ItemForm({ initial, wardrobeId, defaultCategory, onSubmit, onCan
         </Button>
         <Button
           type="submit"
-          disabled={saving || processing || (!initial && !photoBlob)}
+          disabled={saving || processing || needsAlign || (!initial && !photoBlob)}
           className="flex-1"
         >
           {saving ? 'Saving…' : processing ? 'Processing…' : initial ? 'Update' : 'Add item'}
