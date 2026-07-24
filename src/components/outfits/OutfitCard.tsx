@@ -80,7 +80,7 @@ export function OutfitCard({
           )}
         </div>
         <button type="button" onClick={onClick} className="w-full text-left">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             {sortedItems.map((item) => (
               <OutfitItemSlot key={item.id} item={item} compact />
             ))}
@@ -99,7 +99,7 @@ export function OutfitItemsStack({ items }: OutfitItemsStackProps) {
   const sortedItems = sortOutfitItems(items)
 
   return (
-    <div className="border border-black/20 p-3 flex flex-col gap-2 items-center max-w-[220px] mx-auto">
+    <div className="border border-black/20 p-3 flex flex-col gap-1 items-center max-w-[220px] mx-auto">
       {sortedItems.map((item) => (
         <OutfitItemSlot key={item.id} item={item} />
       ))}
